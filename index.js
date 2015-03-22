@@ -33,6 +33,7 @@ function Discovery (opts) {
   self._dhtAnnouncing = false
   self._dhtTimeout = false
   self._internalDHT = false // is the DHT created internally?
+  self._destroyers = []
 
   if (opts.tracker === false) {
     self.tracker = false
@@ -49,8 +50,8 @@ function Discovery (opts) {
   }
 
   if (self.dht) {
-    reemit(self.dht, self, ['error', 'warning'])
-    self.dht.on('peer', onPeer)
+    addDestroyer(self, reemit(self.dht, self, ['error', 'warning']))
+    listen(self.dht, 'peer', onPeer, self)
   }
 
   function createDHT () {
@@ -148,9 +149,9 @@ Discovery.prototype._createTracker = function () {
   }
 
   self.tracker = new Tracker(self.peerId, self.port, torrent, trackerOpts)
-  reemit(self.tracker, self, ['peer', 'warning', 'error'])
+  addDestroyer(self, reemit(self.tracker, self, ['peer', 'warning', 'error']))
   self.tracker.setInterval(self.intervalMs)
-  self.tracker.on('update', onUpdate)
+  listen(self.tracker, 'update', onUpdate, self)
   self.tracker.start()
 
   function onUpdate (data) {
@@ -182,3 +183,15 @@ Discovery.prototype._dhtAnnounce = function () {
   }
 }
 
+function addDestroyer(target, item) {
+  target._destroyers.push(item)
+}
+
+function listen (source, eventName, cb, target, once) {
+  var destroyer = function () {
+    source.removeListener(eventName, cb)
+  }
+  addDestroyer(target, destroyer)
+  source[ once ? 'once' : 'on'](eventName, cb)
+  return destroyer
+}
